@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+### BEGIN INIT INFO
+# Provides:          selenium-rc
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start daemon at boot time
+# Description:       Enable service provided by daemon.
+### END INIT INFO
+#
+# Thanks to Dan Straw
+# http://www.danstraw.com/
+#
+
+case "${1:-''}" in
+'start')
+    if test -f /var/run/selenium/selenium-rc.pid
+    then
+        echo "Selenium is already running."
+    else
+        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar -role node -hub http://localhost:4444/grid/register > /usr/local/selenium/logs/selenium-rc-output.log 2> /usr/local/selenium/logs/selenium-rc-error.log & echo $! > /var/run/selenium/selenium-rc.pid
+        echo "Starting Selenium HUB..."
+
+        error=$?
+        if test $error -gt 0
+        then
+            echo "${bon}Error $error! Couldn't start Selenium!${boff}"
+        fi
+    fi
+    ;;
+    'stop')
+    if test -f /var/run/selenium/selenium-rc.pid
+    then
+        echo "Stopping Selenium..."
+        PID=`cat /var/run/selenium/selenium-rc.pid`
+        pkill -P $PID
+        if pkill -P $PID ;
+           then
+               sleep 2
+               test -f /var/run/selenium/selenium-rc.pid && rm -f /var/run/selenium/selenium-rc.pid
+            else
+                echo "Selenium could not be stopped..."
+            fi
+        else
+                echo "Selenium is not running."
+        fi
+    ;;
+    'restart')
+    if test -f /var/run/selenium/selenium-rc.pid
+    then
+        kill -HUP `cat /var/run/selenium/selenium-rc.pid`
+        test -f /var/run/selenium/selenium-rc.pid && rm -f /var/run/selenium/selenium-rc.pid
+        sleep 1
+        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar -role node -hub http://localhost:4444/grid/register > /usr/local/selenium/logs/selenium-rc-output.log 2> /usr/local/selenium/logs/selenium-rc-error.log & echo $! > /var/run/selenium/selenium-rc.pid
+        echo "Reload Selenium..."
+    else
+        echo "Selenium isn't running..."
+    fi
+    ;;
+    *)      # no parameter specified
+        echo "Usage: $SELF start|stop|restart|reload|force-reload|status"
+        exit 1
+    ;;
+esac
+
