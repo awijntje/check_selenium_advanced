@@ -1,0 +1,310 @@
+#!/usr/bin/perl -w
+
+######################################################################
+#
+# Plugin designed to use Selenium IDE testcases for advanced 
+# monitoring of websites.
+#
+# Author: Alan Wijntje
+# websites
+
+use lib "/usr/local/nagios/libexec";
+use utils qw($TIMEOUT %ERRORS &print_revision);
+use vars qw($PROGNAME);
+use strict;
+use warnings;
+use Data::Dumper;
+use Time::HiRes qw(sleep);
+use Getopt::Long;
+use vars qw($opt_w $opt_c $opt_h $opt_f $opt_b $opt_V $opt_B);
+
+$PROGNAME = "check_selenium_advanced";
+
+sub print_help();
+sub timer();
+sub message();
+sub print_usage();
+
+Getopt::Long::Configure('bundling');
+GetOptions (
+    	"V"          => \$opt_V,
+    	"version"    => \$opt_V,
+        "h"     => \$opt_h,
+        "help"  => \$opt_h,
+        "f=s"   => \$opt_f,
+        "file"  => \$opt_f,
+        "b=s"   => \$opt_b,
+        "bundle" => \$opt_b,
+        "w=s"   => \$opt_w,
+        "warning" => \$opt_w,
+        "c=s"   => \$opt_c,
+        "critical" => \$opt_c,
+	"B=s"	=> \$opt_B,
+	"browser" => \$opt_B);
+
+if ($opt_V) {
+    print_revision( $PROGNAME, '1.0.0' );
+    exit $ERRORS{'OK'};
+}
+
+if ($opt_h) {
+    print_help();
+    exit $ERRORS{'OK'};
+};
+
+($opt_c) || ( $opt_c = shift ) || ( $opt_c = 30 );
+my $critical = $1 if ( $opt_c =~ /([0-9]+)/ );
+
+($opt_w) || ( $opt_w = shift ) || ( $opt_w = 10 );
+my $warning = $1 if ( $opt_w =~ /([0-9]+)/ );
+
+# used variables.
+my $input;
+my $failed;
+my $msg;
+my $uom;
+my $tempuom;
+my $diff = 0;
+my $status;
+my $error;
+my $sttime;
+my $endtime;
+my $result;
+my $results;
+my $output;
+my $data;
+my $time;
+my $etime = 0;
+my $step;
+my $bundles;
+my $bundletime;
+my $bundlename;
+my $bundlesteps;
+my $failedbundles;
+my $failure;
+my $steps;
+my $count = 0;
+my $bundlecount = 0;
+my $browser;
+my $fail;
+my $total;
+my $suc;
+
+# used arrays.
+my @error;
+my @fail;
+my @suc;
+my @result;
+my @uom;
+my @diff;
+my @bundles;
+my @bundlesteps;
+my @failedbundles;
+my @tmp;
+my @msg;
+my @bundlesnums;
+
+# used hashes.
+my %results; # key = output, value = time.
+my %data; # key = output, value = time (short list).
+my %stepstep; # key = output, value = step.
+my %bundles; # key = bundlename, value = steps.
+my %times; # key = step, value = time.
+
+if (!$opt_f) {
+        print_usage();
+        exit $ERRORS{'OK'};
+} else {
+        $input = $opt_f;
+};
+
+if (!$opt_B) {
+	# no browser selected use default
+	$browser = "*firefox";
+} else {
+	$browser = "*"."$opt_B";
+};
+
+if ($opt_b) {
+        # we are using bundles.
+        @bundles = split /-/, $opt_b;
+        foreach $bundles (@bundles) {
+		$bundlecount++;
+                @tmp = split(/:/, $bundles);
+		$bundlename = $tmp[1];
+                $bundles{$bundlename} = $tmp[0];
+                };
+        };
+
+open (FH,"/usr/bin/env perl $input $browser 2>&1 |") or die "Can't open filehandle: $!\n";
+while (<FH>) {
+        if ($count == 0) {
+                $sttime = [Time::HiRes::gettimeofday()];
+        }
+        chomp($output = $_);
+        $endtime = sprintf "%.2f", Time::HiRes::tv_interval($sttime);
+        $results{$output} = $endtime ;
+        $sttime = [Time::HiRes::gettimeofday()]; 
+        $count++;
+};
+close FH;
+
+foreach $result (keys %results) {
+        if ($result =~ /\b^error\b/i) { # these are errors returned by the selenium system.
+                $diff = 0;
+                push(@error, $result);
+        } elsif ($result =~ /\bTime\b/) {
+                @diff = split (/\s+/, $result);
+                $diff = sprintf "%.2f" ,$diff[2];
+        } elsif ( $result =~ /\bnot ok\b/) {
+                $time = $results{$result};
+                push(@fail, $result);
+                $data{$result} = $time;
+        } elsif ( $result =~ /\bok\b/ ) {
+                $time = $results{$result};
+                push (@suc, $result);
+                $data{$result} = $time;
+	};
+};
+
+# process data for time per step, and create the stepstep name <=> step.
+foreach $data (keys %data) {
+	if ($data =~ m/(\d+)/) {
+		$step = $1;
+	};
+	$times{$step} = $data{$data};
+	$stepstep{$data} = $step;
+};
+
+if (@error) { # might need to expand on this later on depending on errors that selenium reports.
+	$status = "2";
+	foreach $error (@error) {
+		push(@msg, $error);
+		$msg = "@msg";
+	};
+	$uom = "| time=$diff"."s;$warning;$critical;0;0";
+} else {
+	($msg) = message();
+	($status, $uom, $msg) = timer();
+};
+
+# return outcome to Opsview.
+if ($status == 0) {
+        print "$msg $uom";
+        exit $ERRORS{'OK'};
+} elsif ($status == 1) {
+        print "$msg $uom";
+        exit $ERRORS{'WARNING'};
+} elsif ($status == 2) {
+        print "$msg $uom";
+        exit $ERRORS{'CRITICAL'};
+} else {
+        print "$msg $uom";
+        exit $ERRORS{'UNKNOWN'};
+};
+
+# create message and status code based on number of failures.
+sub message () {
+        $fail = @fail;
+        $suc = @suc;
+        $total = $fail + $suc;
+	if ($opt_b) {
+		foreach $failed (@fail) { #find the bundles that failed
+			foreach $bundles (keys %bundles) {
+				@bundlesnums = split(/,/, $bundles{$bundles});
+				if (grep /$stepstep{$failed}/, @bundlesnums) {
+					$failure = "$bundles message: $failed";
+					push(@failedbundles, $failure);
+				};
+			};
+		};
+		$failedbundles = "@failedbundles";
+		if ($failedbundles) {
+			$msg = "failed bundle(s): $failedbundles";
+		} else {
+			$msg = "All bundles passed";
+		};
+	} else {
+		if ($fail > 0) {
+			$msg = "$fail\/$total steps failed message: @fail";
+		} else {
+			$msg = "All steps passed";
+		};
+	};
+        return ($msg);
+};
+
+
+# timer subroutine creates UOM and appends message to reflect this.
+sub timer () {
+	if (($fail == $total)||($fail > $suc)) {
+		$status = 2;
+	} elsif (($fail > 0)&&($fail < $suc)) {
+		$status = 1;
+	} else {
+		$status = 0;
+	};
+        $uom = "| time=$diff"."s;$warning;$critical;0;0";
+        if ($diff > $critical) {
+                $status = 2;
+                $msg = "$msg in: $diff seconds, critical is $critical";
+        } elsif ($diff > $warning) {
+                $status = 1 unless $status >= 1;
+                $msg = "$msg in: $diff seconds, warning is $warning";
+        } else {
+                $status = 0 unless $status >= 0;
+                $msg = "$msg in: $diff seconds";
+        };
+        if ($opt_b) {
+                foreach $bundles (keys %bundles) {
+                        # get total for this bundle.
+                        @bundlesteps = split(/,/, $bundles{$bundles});
+                        foreach $bundlesteps (@bundlesteps) {
+                                $etime = $etime + $times{$bundlesteps};
+                        };
+                        $tempuom = "$bundles=$etime"."s\;0\;0\;0";
+                        push(@uom, $tempuom);
+                        $etime = 0;
+                };
+        } else {
+                foreach $step (keys %times) {
+                        $tempuom = "$step=$times{$step}"."s\;0\;0\;0";
+                        push(@uom, $tempuom);
+                };
+        };
+        if (!$opt_b) {
+                @uom = sort(@uom);
+        };
+        $uom = "$uom @uom";
+        return ($status, $uom, $msg);
+};
+
+sub print_help () {
+    	print_revision( $PROGNAME, '1.0.0' );
+    	print "Created by Alan Wijntje\n";
+    	print "\n";
+    	print_usage();
+    	print "\n";
+	print "Plugin to use Selenium created test-cases in Opsview.\n";
+	print "\n";
+	print "Note that the file you specify should be exported using the Opsview export in Selenium IDE.\n";
+	print "\n";
+	print "Explanation of arguments.\n";
+	print "-f <selenium file> = path to the selenium export file you want to run.\n";
+	print "-c/-w warning and critical thresholds, this applies to the entire testcase (not individual steps).\n";
+	print "default values are 10 seconds for warning, 20 seconds for critical.\n";
+	print "-b bundling option.\n";
+	print "bundling allows for test case steps to be grouped into logical groups (like login or logout).\n";
+	print "each bundle is described as the testcase steps (comma seperated) followed by : and the bundle name.\n";
+	print "multiple bundles are seperated with a -.\n";
+	print "\n";
+	print "Example: steps 1,2 and 3 are part of login, steps 4,5 and 6 of logout.\n";
+	print "gives us \"1,2,3:Login-4,5,6:Logout\".\n";
+	print "\n";
+	print "-B <browser> = which browser should be used (for Selenium GRID setups) defaults to firefox.\n";
+	print "\n";
+};
+
+sub print_usage () {
+        print "Usage: $PROGNAME [-f <selenium file>] [-b <\"n,n,n:Name1-n,n,n:Name2\">] [-w <warning>] [-c <critical>] [-B <browser>]\n";
+};
