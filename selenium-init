@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 ### BEGIN INIT INFO
-# Provides:          selenium-server
+# Provides:          selenium
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
@@ -16,11 +16,11 @@
 
 case "${1:-''}" in
 'start')
-    if test -f /var/run/selenium/selenium-server.pid
+    if test -f /var/run/selenium/selenium.pid
     then
         echo "Selenium is already running."
     else
-        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar -role node -hub http://localhost:4444/grid/register > /usr/local/selenium/logs/selenium-server-output.log 2> /usr/local/selenium/logs/selenium-server-error.log & echo $! > /var/run/selenium/selenium-server.pid
+        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar > /usr/local/selenium/logs/selenium-output.log 2> /usr/local/selenium/logs/selenium-error.log & echo $! > /var/run/selenium/selenium.pid
         echo "Starting Selenium HUB..."
 
         error=$?
@@ -31,15 +31,15 @@ case "${1:-''}" in
     fi
     ;;
     'stop')
-    if test -f /var/run/selenium/selenium-server.pid
+    if test -f /var/run/selenium/selenium.pid
     then
         echo "Stopping Selenium..."
-        PID=`cat /var/run/selenium/selenium-server.pid`
+        PID=`cat /var/run/selenium/selenium.pid`
         pkill -P $PID
         if pkill -P $PID ;
            then
                sleep 2
-               test -f /var/run/selenium/selenium-server.pid && rm -f /var/run/selenium/selenium-server.pid
+               test -f /var/run/selenium/selenium.pid && rm -f /var/run/selenium/selenium.pid
             else
                 echo "Selenium could not be stopped..."
             fi
@@ -48,12 +48,12 @@ case "${1:-''}" in
         fi
     ;;
     'restart')
-    if test -f /var/run/selenium/selenium-server.pid
+    if test -f /var/run/selenium/selenium.pid
     then
-        kill -HUP `cat /var/run/selenium/selenium-server.pid`
-        test -f /var/run/selenium/selenium-server.pid && rm -f /var/run/selenium/selenium-server.pid
+        kill -HUP `cat /var/run/selenium/selenium.pid`
+        test -f /var/run/selenium/selenium.pid && rm -f /var/run/selenium/selenium.pid
         sleep 1
-        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar -role node -hub http://localhost:4444/grid/register > /usr/local/selenium/logs/selenium-server-output.log 2> /usr/local/selenium/logs/selenium-server-error.log & echo $! > /var/run/selenium/selenium-server.pid
+        env DISPLAY=:99 /usr/bin/java -jar /usr/local/selenium/selenium-server.jar > /usr/local/selenium/logs/selenium-output.log 2> /usr/local/selenium/logs/selenium-error.log & echo $! > /var/run/selenium/selenium.pid
         echo "Reload Selenium..."
     else
         echo "Selenium isn't running..."
