@@ -285,9 +285,7 @@ sub print_help () {
     	print "\n";
     	print_usage();
     	print "\n";
-	print "Plugin to use Selenium created test-cases in Opsview.\n";
-	print "\n";
-	print "Note that the file you specify should be exported using the Opsview export in Selenium IDE.\n";
+	print "Plugin to use Selenium created test-cases in Opsview/Nagios.\n";
 	print "\n";
 	print "Explanation of arguments.\n";
 	print "-f <selenium file> = path to the selenium export file you want to run.\n";
